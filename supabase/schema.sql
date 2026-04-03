@@ -1,0 +1,165 @@
+-- Kairos Summit Blogger Backend Schema
+-- Run this in Supabase SQL Editor before using blog endpoints.
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.bloggers (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  full_name text not null,
+  avatar_url text,
+  role text not null default 'blogger' check (role in ('blogger', 'admin')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.posts (
+  id uuid primary key default gen_random_uuid(),
+  author_id uuid not null references auth.users (id) on delete cascade,
+  title text not null,
+  slug text not null unique,
+  excerpt text,
+  content text not null,
+  cover_image_url text,
+  status text not null default 'draft' check (status in ('draft', 'published')),
+  published_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts (id) on delete cascade,
+  author_name text not null,
+  author_email text,
+  content text not null,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.tags (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.post_tags (
+  post_id uuid not null references public.posts (id) on delete cascade,
+  tag_id uuid not null references public.tags (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id, tag_id)
+);
+
+create index if not exists idx_posts_author_id on public.posts (author_id);
+create index if not exists idx_posts_status_created_at on public.posts (status, created_at desc);
+create index if not exists idx_posts_slug on public.posts (slug);
+create index if not exists idx_comments_post_id on public.comments (post_id);
+create index if not exists idx_comments_status on public.comments (status);
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_bloggers_updated_at on public.bloggers;
+create trigger trg_bloggers_updated_at
+before update on public.bloggers
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists trg_posts_updated_at on public.posts;
+create trigger trg_posts_updated_at
+before update on public.posts
+for each row
+execute function public.set_updated_at();
+
+alter table public.bloggers enable row level security;
+alter table public.posts enable row level security;
+alter table public.comments enable row level security;
+alter table public.tags enable row level security;
+alter table public.post_tags enable row level security;
+
+drop policy if exists "bloggers read own profile" on public.bloggers;
+create policy "bloggers read own profile"
+on public.bloggers
+for select
+using (auth.uid() = user_id);
+
+drop policy if exists "bloggers update own profile" on public.bloggers;
+create policy "bloggers update own profile"
+on public.bloggers
+for update
+using (auth.uid() = user_id);
+
+drop policy if exists "posts public read published" on public.posts;
+create policy "posts public read published"
+on public.posts
+for select
+using (status = 'published' or auth.uid() = author_id);
+
+drop policy if exists "posts create own" on public.posts;
+create policy "posts create own"
+on public.posts
+for insert
+with check (auth.uid() = author_id);
+
+drop policy if exists "posts update own" on public.posts;
+create policy "posts update own"
+on public.posts
+for update
+using (auth.uid() = author_id);
+
+drop policy if exists "posts delete own" on public.posts;
+create policy "posts delete own"
+on public.posts
+for delete
+using (auth.uid() = author_id);
+
+drop policy if exists "comments public read approved" on public.comments;
+create policy "comments public read approved"
+on public.comments
+for select
+using (
+  status = 'approved'
+  or exists (
+    select 1
+    from public.posts p
+    where p.id = comments.post_id
+      and p.author_id = auth.uid()
+  )
+);
+
+drop policy if exists "comments create" on public.comments;
+create policy "comments create"
+on public.comments
+for insert
+with check (true);
+
+drop policy if exists "comments moderate post owner" on public.comments;
+create policy "comments moderate post owner"
+on public.comments
+for update
+using (
+  exists (
+    select 1
+    from public.posts p
+    where p.id = comments.post_id
+      and p.author_id = auth.uid()
+  )
+);
+
+drop policy if exists "tags public read" on public.tags;
+create policy "tags public read"
+on public.tags
+for select
+using (true);
+
+drop policy if exists "post_tags public read" on public.post_tags;
+create policy "post_tags public read"
+on public.post_tags
+for select
+using (true);
