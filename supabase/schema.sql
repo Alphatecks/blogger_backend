@@ -20,11 +20,15 @@ create table if not exists public.posts (
   excerpt text,
   content text not null,
   cover_image_url text,
+  is_top_header boolean not null default false,
   status text not null default 'draft' check (status in ('draft', 'published')),
   published_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.posts
+add column if not exists is_top_header boolean not null default false;
 
 create table if not exists public.comments (
   id uuid primary key default gen_random_uuid(),
@@ -52,6 +56,7 @@ create table if not exists public.post_tags (
 create index if not exists idx_posts_author_id on public.posts (author_id);
 create index if not exists idx_posts_status_created_at on public.posts (status, created_at desc);
 create index if not exists idx_posts_slug on public.posts (slug);
+create index if not exists idx_posts_top_header on public.posts (is_top_header, updated_at desc);
 create index if not exists idx_comments_post_id on public.comments (post_id);
 create index if not exists idx_comments_status on public.comments (status);
 

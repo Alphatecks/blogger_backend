@@ -20,7 +20,9 @@ Copy `.env.example` to `.env` and set:
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` (required for DB writes and avatar upload)
 - `ALLOWED_BLOGGER_EMAIL_DOMAIN`
-- `BLOGGER_AVATAR_BUCKET`
+- `BLOGGER_AVATAR_BUCKET` (bucket name only, not URL)
+- `BLOGGER_DEFAULT_AVATAR_URL` (used when no avatar is uploaded)
+- `BLOGGER_POST_COVER_BUCKET` (stores uploaded local post cover images)
 - `BLOGGER_RESET_PASSWORD_REDIRECT_URL`
 
 ## Database Setup (Required)
@@ -50,10 +52,19 @@ with indexes, triggers, and RLS policies.
 ### Blogs
 
 - `GET /api/blogs`
+- `GET /api/blogs/feed` (UI feed cards with category/search/pagination)
+- `GET /api/blogs/categories` (category tabs, includes `All`)
+- `GET /api/blogs/top-header` (hero/top-header card payload)
 - `GET /api/blogs/:slug`
 - `POST /api/blogs` (Bearer token required)
 - `PUT /api/blogs/:id` (Bearer token required, author only)
 - `DELETE /api/blogs/:id` (Bearer token required, author only)
+
+`POST /api/blogs` and `PUT /api/blogs/:id` support:
+
+- JSON body with `coverImageUrl`, or
+- `multipart/form-data` with local file field `coverImage`.
+- `isTopHeader` (`true`/`false`) to control the homepage top header post.
 
 ### Comments
 
