@@ -36,6 +36,37 @@ const toSlug = (value: string): string =>
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
+const generateUniqueSlug = async (title: string, excludePostId?: string): Promise<string> => {
+  const admin = getAdminClient();
+  const baseSlug = toSlug(title) || `post-${Date.now()}`;
+
+  const { data, error } = await admin
+    .from("posts")
+    .select("id, slug")
+    .ilike("slug", `${baseSlug}%`);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const taken = new Set(
+    ((data ?? []) as Array<{ id: string; slug: string }>)
+      .filter((row) => row.id !== excludePostId)
+      .map((row) => row.slug)
+  );
+
+  if (!taken.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  let counter = 2;
+  while (taken.has(`${baseSlug}-${counter}`)) {
+    counter += 1;
+  }
+
+  return `${baseSlug}-${counter}`;
+};
+
 const estimateReadTime = (content: string): string => {
   const words = content.trim().split(/\s+/).filter(Boolean).length;
   const minutes = Math.max(1, Math.ceil(words / 200));
@@ -606,11 +637,11 @@ blogRouter.post(
 
   const postStatus: PostStatus = status === "published" ? "published" : "draft";
   const shouldBeTopHeader = normalizeBoolean(isTopHeader) ?? false;
-  const slug = toSlug(title);
 
   try {
     const uploadedCoverImageUrl = await uploadPostCoverIfPresent(req.file);
     const resolvedCoverImageUrl = uploadedCoverImageUrl || coverImageUrl?.trim() || null;
+    const slug = await generateUniqueSlug(title);
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("posts")
@@ -710,7 +741,7 @@ blogRouter.put(
 
     if (title) {
       updatePayload.title = title.trim();
-      updatePayload.slug = toSlug(title);
+      updatePayload.slug = await generateUniqueSlug(title, id);
     }
 
     if (typeof content === "string") {
