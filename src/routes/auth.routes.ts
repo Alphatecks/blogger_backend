@@ -14,10 +14,50 @@ const allowedEmailDomain = (
 ).toLowerCase();
 const avatarBucket = process.env.BLOGGER_AVATAR_BUCKET || "blogger-avatars";
 const resetPasswordRedirectTo = process.env.BLOGGER_RESET_PASSWORD_REDIRECT_URL;
+let avatarBucketReady = false;
 
 const isAllowedBloggerEmail = (email: string): boolean => {
   const normalizedEmail = email.trim().toLowerCase();
   return normalizedEmail.endsWith(`@${allowedEmailDomain}`);
+};
+
+const ensureAvatarBucketExists = async (): Promise<void> => {
+  const admin = supabaseAdmin;
+
+  if (!admin) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY is required to upload profile photos from backend"
+    );
+  }
+
+  if (avatarBucketReady) {
+    return;
+  }
+
+  const { error: bucketLookupError } = await admin.storage.getBucket(avatarBucket);
+
+  if (!bucketLookupError) {
+    avatarBucketReady = true;
+    return;
+  }
+
+  if (!bucketLookupError.message.toLowerCase().includes("not found")) {
+    throw new Error(`Failed to access avatar bucket: ${bucketLookupError.message}`);
+  }
+
+  const { error: createBucketError } = await admin.storage.createBucket(avatarBucket, {
+    public: true
+  });
+
+  if (createBucketError) {
+    const normalizedMessage = createBucketError.message.toLowerCase();
+
+    if (!normalizedMessage.includes("already exists")) {
+      throw new Error(`Failed to create avatar bucket: ${createBucketError.message}`);
+    }
+  }
+
+  avatarBucketReady = true;
 };
 
 const uploadAvatarIfPresent = async (file?: Express.Multer.File): Promise<string | null> => {
@@ -25,16 +65,19 @@ const uploadAvatarIfPresent = async (file?: Express.Multer.File): Promise<string
     return null;
   }
 
-  if (!supabaseAdmin) {
+  const admin = supabaseAdmin;
+  if (!admin) {
     throw new Error(
       "SUPABASE_SERVICE_ROLE_KEY is required to upload profile photos from backend"
     );
   }
 
+  await ensureAvatarBucketExists();
+
   const safeExtension = file.mimetype.split("/")[1] || "jpg";
   const filePath = `blogger/${Date.now()}-${randomUUID()}.${safeExtension}`;
 
-  const { error } = await supabaseAdmin.storage
+  const { error } = await admin.storage
     .from(avatarBucket)
     .upload(filePath, file.buffer, {
       contentType: file.mimetype,
@@ -45,7 +88,7 @@ const uploadAvatarIfPresent = async (file?: Express.Multer.File): Promise<string
     throw new Error(`Failed to upload avatar: ${error.message}`);
   }
 
-  const { data } = supabaseAdmin.storage.from(avatarBucket).getPublicUrl(filePath);
+  const { data } = admin.storage.from(avatarBucket).getPublicUrl(filePath);
   return data.publicUrl;
 };
 
