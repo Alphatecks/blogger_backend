@@ -92,6 +92,46 @@ const uploadAvatarIfPresent = async (file?: Express.Multer.File): Promise<string
   return data.publicUrl;
 };
 
+const autoConfirmUserEmail = async (userId: string): Promise<void> => {
+  const admin = supabaseAdmin;
+  if (!admin) {
+    return;
+  }
+
+  const { error } = await admin.auth.admin.updateUserById(userId, {
+    email_confirm: true
+  });
+
+  if (error) {
+    throw new Error(`Failed to auto-confirm email: ${error.message}`);
+  }
+};
+
+const maybeAutoConfirmForLogin = async (email: string): Promise<boolean> => {
+  const admin = supabaseAdmin;
+  if (!admin) {
+    return false;
+  }
+
+  const { data, error } = await admin.auth.admin.listUsers();
+  if (error) {
+    return false;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = data.users.find((item) => item.email?.toLowerCase() === normalizedEmail);
+
+  if (!user || user.email_confirmed_at) {
+    return false;
+  }
+
+  const { error: confirmError } = await admin.auth.admin.updateUserById(user.id, {
+    email_confirm: true
+  });
+
+  return !confirmError;
+};
+
 authRouter.post(
   "/signup",
   upload.single("photo"),
@@ -135,6 +175,10 @@ authRouter.post(
       if (error) {
         res.status(400).json({ message: error.message });
         return;
+      }
+
+      if (data.user) {
+        await autoConfirmUserEmail(data.user.id);
       }
 
       if (supabaseAdmin && data.user) {
@@ -185,6 +229,28 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
     email: email.trim().toLowerCase(),
     password
   });
+
+  if (error && error.message.toLowerCase().includes("email not confirmed")) {
+    const confirmed = await maybeAutoConfirmForLogin(email);
+    if (confirmed) {
+      const retry = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password
+      });
+
+      if (!retry.error) {
+        res.status(200).json({
+          message: "Login successful",
+          user: retry.data.user,
+          session: retry.data.session
+        });
+        return;
+      }
+
+      res.status(401).json({ message: retry.error.message });
+      return;
+    }
+  }
 
   if (error) {
     res.status(401).json({ message: error.message });
