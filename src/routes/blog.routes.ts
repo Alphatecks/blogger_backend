@@ -197,13 +197,18 @@ const getPostTagMap = async (
   const tagMap: Record<string, string[]> = {};
   for (const row of (data ?? []) as Array<{
     post_id: string;
-    tags: Array<{ name: string }> | null;
+    tags: Array<{ name: string }> | { name: string } | null;
   }>) {
     if (!tagMap[row.post_id]) {
       tagMap[row.post_id] = [];
     }
 
-    const names = (row.tags ?? []).map((tag) => tag.name).filter(Boolean);
+    const normalizedTags = Array.isArray(row.tags)
+      ? row.tags
+      : row.tags
+        ? [row.tags]
+        : [];
+    const names = normalizedTags.map((tag) => tag.name).filter(Boolean);
     tagMap[row.post_id].push(...names);
   }
 
