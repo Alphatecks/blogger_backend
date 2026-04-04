@@ -8,6 +8,9 @@ import { auth } from "../middleware/auth";
 
 const blogRouter = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const commentAutoApprove = (process.env.BLOGGER_COMMENT_AUTO_APPROVE || "true")
+  .trim()
+  .toLowerCase() === "true";
 
 type PostStatus = "draft" | "published";
 type CommentStatus = "pending" | "approved" | "rejected";
@@ -122,6 +125,31 @@ const formatHeaderDate = (dateValue: string | null): string | null => {
   return `${dayWithOrdinal(date.getDate())} ${month} ${date.getFullYear()}`;
 };
 
+const formatTimeAgo = (dateValue: string): string => {
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const diffMs = Date.now() - date.getTime();
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+
+  if (diffMs < hourMs) {
+    const minutes = Math.max(1, Math.floor(diffMs / minuteMs));
+    return `${minutes} min${minutes === 1 ? "" : "s"} ago`;
+  }
+
+  if (diffMs < dayMs) {
+    const hours = Math.max(1, Math.floor(diffMs / hourMs));
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+
+  const days = Math.max(1, Math.floor(diffMs / dayMs));
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+};
+
 const toHeaderSubtitle = (excerpt: string | null, content: string): string => {
   if (excerpt?.trim()) {
     return excerpt.trim();
@@ -146,6 +174,33 @@ const clearTopHeaderForOtherPosts = async (currentPostId: string): Promise<void>
   if (error) {
     throw new Error(error.message);
   }
+};
+
+const resolvePublishedPostByIdentifier = async (
+  identifier: string
+): Promise<{ id: string; slug: string } | null> => {
+  const admin = getAdminClient();
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      identifier
+    );
+
+  const column = isUuid ? "id" : "slug";
+  const { data, error } = await admin
+    .from("posts")
+    .select("id, slug, status")
+    .eq(column, identifier)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data || data.status !== "published") {
+    return null;
+  }
+
+  return { id: data.id, slug: data.slug };
 };
 
 const ensurePostCoverBucketExists = async (): Promise<void> => {
@@ -849,15 +904,21 @@ blogRouter.delete("/:id", auth, async (req: Request, res: Response): Promise<voi
   }
 });
 
-blogRouter.get("/:postId/comments", async (req: Request, res: Response): Promise<void> => {
-  const { postId } = req.params;
+blogRouter.get("/:identifier/comments", async (req: Request, res: Response): Promise<void> => {
+  const { identifier } = req.params;
 
   try {
+    const post = await resolvePublishedPostByIdentifier(identifier);
+    if (!post) {
+      res.status(404).json({ message: "Post not found" });
+      return;
+    }
+
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("comments")
       .select("id, post_id, author_name, author_email, content, status, created_at")
-      .eq("post_id", postId)
+      .eq("post_id", post.id)
       .eq("status", "approved")
       .order("created_at", { ascending: false });
 
@@ -866,15 +927,29 @@ blogRouter.get("/:postId/comments", async (req: Request, res: Response): Promise
       return;
     }
 
-    res.status(200).json({ data: data ?? [] });
+    const comments = (data ?? []).map((item) => ({
+      id: item.id,
+      postId: item.post_id,
+      authorName: item.author_name,
+      content: item.content,
+      createdAt: item.created_at,
+      timeAgo: formatTimeAgo(item.created_at)
+    }));
+
+    res.status(200).json({
+      data: comments,
+      meta: {
+        count: comments.length
+      }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch comments";
     res.status(500).json({ message });
   }
 });
 
-blogRouter.post("/:postId/comments", async (req: Request, res: Response): Promise<void> => {
-  const { postId } = req.params;
+blogRouter.post("/:identifier/comments", async (req: Request, res: Response): Promise<void> => {
+  const { identifier } = req.params;
   const { authorName, authorEmail, content } = req.body as {
     authorName?: string;
     authorEmail?: string;
@@ -887,31 +962,21 @@ blogRouter.post("/:postId/comments", async (req: Request, res: Response): Promis
   }
 
   try {
-    const admin = getAdminClient();
-    const { data: post, error: postError } = await admin
-      .from("posts")
-      .select("id, status")
-      .eq("id", postId)
-      .maybeSingle();
-
-    if (postError) {
-      res.status(400).json({ message: postError.message });
-      return;
-    }
-
-    if (!post || post.status !== "published") {
+    const post = await resolvePublishedPostByIdentifier(identifier);
+    if (!post) {
       res.status(404).json({ message: "Post not found" });
       return;
     }
 
+    const admin = getAdminClient();
     const { data, error } = await admin
       .from("comments")
       .insert({
-        post_id: postId,
+        post_id: post.id,
         author_name: authorName.trim(),
         author_email: authorEmail?.trim() || null,
         content: content.trim(),
-        status: "pending"
+        status: commentAutoApprove ? "approved" : "pending"
       })
       .select("id, post_id, author_name, author_email, content, status, created_at")
       .single();
@@ -921,7 +986,20 @@ blogRouter.post("/:postId/comments", async (req: Request, res: Response): Promis
       return;
     }
 
-    res.status(201).json({ message: "Comment submitted for moderation", data });
+    res.status(201).json({
+      message: commentAutoApprove
+        ? "Comment posted successfully"
+        : "Comment submitted for moderation",
+      data: {
+        id: data.id,
+        postId: data.post_id,
+        authorName: data.author_name,
+        content: data.content,
+        status: data.status,
+        createdAt: data.created_at,
+        timeAgo: formatTimeAgo(data.created_at)
+      }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to submit comment";
     res.status(500).json({ message });

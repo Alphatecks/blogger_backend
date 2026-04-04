@@ -68,6 +68,8 @@ with indexes, triggers, and RLS policies.
 
 ### Comments
 
-- `GET /api/blogs/:postId/comments`
-- `POST /api/blogs/:postId/comments`
+- `GET /api/blogs/:identifier/comments` (`identifier` can be slug or post id)
+- `POST /api/blogs/:identifier/comments` (`identifier` can be slug or post id)
 - `PATCH /api/blogs/comments/:commentId/status` (Bearer token required, post author only)
+
+Set `BLOGGER_COMMENT_AUTO_APPROVE=true` to publish new comments immediately (default true).
