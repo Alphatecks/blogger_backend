@@ -168,3 +168,24 @@ create policy "post_tags public read"
 on public.post_tags
 for select
 using (true);
+
+create table if not exists public.event_registrations (
+  id uuid primary key default gen_random_uuid(),
+  event_slug text not null default 'remnants-reborn-2026',
+  first_name text not null,
+  last_name text not null,
+  email text not null,
+  phone text not null,
+  occupation text not null,
+  coming_from text not null,
+  who_told_you text,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_event_registrations_event_email
+on public.event_registrations (event_slug, lower(email));
+
+create index if not exists idx_event_registrations_created_at
+on public.event_registrations (event_slug, created_at desc);
+
+alter table public.event_registrations enable row level security;

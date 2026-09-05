@@ -1,6 +1,6 @@
 # Kairos Summit Blogger Backend
 
-Express + TypeScript backend for blogger auth, blog posts, and comment moderation.
+Express + TypeScript backend for blogger auth, blog posts, comment moderation, and event seat-list registration.
 
 ## Run
 
@@ -24,6 +24,7 @@ Copy `.env.example` to `.env` and set:
 - `BLOGGER_DEFAULT_AVATAR_URL` (used when no avatar is uploaded)
 - `BLOGGER_POST_COVER_BUCKET` (stores uploaded local post cover images)
 - `BLOGGER_RESET_PASSWORD_REDIRECT_URL`
+- `KAIROS_EVENT_SLUG` (optional, defaults to `remnants-reborn-2026`)
 
 ## Database Setup (Required)
 
@@ -37,6 +38,7 @@ This creates:
 - `comments`
 - `tags`
 - `post_tags`
+- `event_registrations`
 
 with indexes, triggers, and RLS policies.
 
@@ -73,3 +75,25 @@ with indexes, triggers, and RLS policies.
 - `PATCH /api/blogs/comments/:commentId/status` (Bearer token required, post author only)
 
 Set `BLOGGER_COMMENT_AUTO_APPROVE=true` to publish new comments immediately (default true).
+
+### Registrations (Remnants Reborn seat list)
+
+- `POST /api/registrations` (public)
+- `GET /api/registrations/event` (public event details + registered count)
+- `GET /api/registrations` (Bearer token required, paginated seat list)
+
+`POST /api/registrations` body:
+
+```json
+{
+  "firstName": "Ada",
+  "lastName": "Okafor",
+  "email": "ada@example.com",
+  "phone": "+2348012345678",
+  "occupation": "Designer",
+  "comingFrom": "Port Harcourt",
+  "whoToldYou": "A friend"
+}
+```
+
+`whoToldYou` is optional. Email is unique per event. Duplicate emails return `409`.
