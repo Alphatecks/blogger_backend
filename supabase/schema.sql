@@ -191,3 +191,21 @@ on public.event_registrations (event_slug, created_at desc);
 alter table public.event_registrations enable row level security;
 
 -- Direct client access is denied. The Express API writes with the service role.
+
+create table if not exists public.post_visits (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_post_visits_post_id on public.post_visits (post_id);
+create index if not exists idx_post_visits_created_at on public.post_visits (created_at desc);
+
+alter table public.post_visits enable row level security;
+
+create or replace view public.post_visit_counts as
+select
+  post_id,
+  count(*)::int as visits
+from public.post_visits
+group by post_id;

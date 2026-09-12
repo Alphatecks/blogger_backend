@@ -125,6 +125,47 @@ const formatHeaderDate = (dateValue: string | null): string | null => {
   return `${dayWithOrdinal(date.getDate())} ${month} ${date.getFullYear()}`;
 };
 
+const recordPostVisit = async (postId: string): Promise<void> => {
+  try {
+    const admin = getAdminClient();
+    const { error } = await admin.from("post_visits").insert({ post_id: postId });
+    if (error) {
+      console.error(`Failed to record post visit: ${error.message}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to record post visit";
+    console.error(message);
+  }
+};
+
+const getBlogStats = async () => {
+  const admin = getAdminClient();
+
+  const [visitsResult, postsResult, publishedResult, commentsResult] = await Promise.all([
+    admin.from("post_visits").select("id", { count: "exact", head: true }),
+    admin.from("posts").select("id", { count: "exact", head: true }),
+    admin.from("posts").select("id", { count: "exact", head: true }).eq("status", "published"),
+    admin.from("comments").select("id", { count: "exact", head: true })
+  ]);
+
+  const firstError =
+    visitsResult.error || postsResult.error || publishedResult.error || commentsResult.error;
+  if (firstError) {
+    throw new Error(firstError.message);
+  }
+
+  const totalVisits = visitsResult.count ?? 0;
+
+  return {
+    totalVisits,
+    visits: totalVisits,
+    total: totalVisits,
+    totalPosts: postsResult.count ?? 0,
+    publishedPosts: publishedResult.count ?? 0,
+    totalComments: commentsResult.count ?? 0
+  };
+};
+
 const formatTimeAgo = (dateValue: string): string => {
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) {
@@ -570,6 +611,130 @@ blogRouter.get("/top-header", async (_req: Request, res: Response): Promise<void
   }
 });
 
+blogRouter.get("/visits/total", auth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const stats = await getBlogStats();
+    res.status(200).json({
+      totalVisits: stats.totalVisits,
+      visits: stats.visits,
+      total: stats.total,
+      data: {
+        totalVisits: stats.totalVisits,
+        visits: stats.visits,
+        total: stats.total
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to fetch visit total";
+    res.status(500).json({ message });
+  }
+});
+
+blogRouter.get("/stats", auth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const stats = await getBlogStats();
+    res.status(200).json({
+      totalVisits: stats.totalVisits,
+      visits: stats.visits,
+      total: stats.total,
+      data: stats
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to fetch blog stats";
+    res.status(500).json({ message });
+  }
+});
+
+blogRouter.get("/analytics", auth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const admin = getAdminClient();
+    const stats = await getBlogStats();
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { count: visitsLast7Days, error: recentError } = await admin
+      .from("post_visits")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", since);
+
+    if (recentError) {
+      res.status(400).json({ message: recentError.message });
+      return;
+    }
+
+    const { data: topVisitRows, error: topError } = await admin
+      .from("post_visit_counts")
+      .select("post_id, visits")
+      .order("visits", { ascending: false })
+      .limit(8);
+
+    if (topError) {
+      res.status(400).json({ message: topError.message });
+      return;
+    }
+
+    const topPostIds = ((topVisitRows ?? []) as Array<{ post_id: string; visits: number }>).map(
+      (row) => row.post_id
+    );
+
+    let topPosts: Array<{ id: string; title: string; slug: string; visits: number }> = [];
+    if (topPostIds.length) {
+      const { data: posts, error: postsError } = await admin
+        .from("posts")
+        .select("id, title, slug")
+        .in("id", topPostIds);
+
+      if (postsError) {
+        res.status(400).json({ message: postsError.message });
+        return;
+      }
+
+      const postMap = new Map(
+        ((posts ?? []) as Array<{ id: string; title: string; slug: string }>).map((post) => [
+          post.id,
+          post
+        ])
+      );
+      const visitMap = new Map(
+        ((topVisitRows ?? []) as Array<{ post_id: string; visits: number }>).map((row) => [
+          row.post_id,
+          row.visits
+        ])
+      );
+
+      topPosts = topPostIds
+        .map((postId) => {
+          const post = postMap.get(postId);
+          if (!post) {
+            return null;
+          }
+          return {
+            id: post.id,
+            title: post.title,
+            slug: post.slug,
+            visits: visitMap.get(postId) ?? 0
+          };
+        })
+        .filter((post): post is { id: string; title: string; slug: string; visits: number } =>
+          Boolean(post)
+        );
+    }
+
+    res.status(200).json({
+      totalVisits: stats.totalVisits,
+      visits: stats.visits,
+      total: stats.total,
+      data: {
+        ...stats,
+        visitsLast7Days: visitsLast7Days ?? 0,
+        topPosts
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to fetch blog analytics";
+    res.status(500).json({ message });
+  }
+});
+
 blogRouter.get("/", async (req: Request, res: Response): Promise<void> => {
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 10);
@@ -640,6 +805,10 @@ blogRouter.get("/:slug", async (req: Request, res: Response): Promise<void> => {
     if (!data) {
       res.status(404).json({ message: "Post not found" });
       return;
+    }
+
+    if (data.status === "published") {
+      void recordPostVisit(data.id);
     }
 
     const tagMap = await getPostTagMap([data.id]);

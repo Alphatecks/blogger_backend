@@ -44,6 +44,7 @@ This creates:
 - `tags`
 - `post_tags`
 - `event_registrations`
+- `post_visits`
 
 with indexes, triggers, and RLS policies.
 
@@ -62,6 +63,9 @@ with indexes, triggers, and RLS policies.
 - `GET /api/blogs/feed` (UI feed cards with category/search/pagination)
 - `GET /api/blogs/categories` (category tabs, includes `All`)
 - `GET /api/blogs/top-header` (hero/top-header card payload)
+- `GET /api/blogs/visits/total` (Bearer token required, dashboard visit count)
+- `GET /api/blogs/stats` (Bearer token required)
+- `GET /api/blogs/analytics` (Bearer token required)
 - `GET /api/blogs/:slug`
 - `POST /api/blogs` (Bearer token required)
 - `PUT /api/blogs/:id` (Bearer token required, author only)
