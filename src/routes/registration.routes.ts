@@ -32,15 +32,20 @@ type RegistrationRow = {
 
 type RegistrationBody = {
   firstName?: string;
+  first_name?: string;
   lastName?: string;
+  last_name?: string;
   email?: string;
   phone?: string;
   occupation?: string;
   comingFrom?: string;
+  coming_from?: string;
   whoToldYou?: string;
+  who_told_you?: string;
 };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const defaultComingFrom = "Port Harcourt";
 
 const isUniqueViolation = (message: string): boolean => {
   const normalized = message.toLowerCase();
@@ -49,6 +54,17 @@ const isUniqueViolation = (message: string): boolean => {
 
 const readString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const readField = (body: RegistrationBody, ...keys: Array<keyof RegistrationBody>): string => {
+  for (const key of keys) {
+    const value = readString(body[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+};
 
 const toRegistration = (row: RegistrationRow) => ({
   id: row.id,
@@ -90,18 +106,17 @@ registrationRouter.get("/event", async (_req: Request, res: Response): Promise<v
 
 registrationRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   const body = req.body as RegistrationBody;
-  const firstName = readString(body.firstName);
-  const lastName = readString(body.lastName);
-  const email = readString(body.email).toLowerCase();
-  const phone = readString(body.phone);
-  const occupation = readString(body.occupation);
-  const comingFrom = readString(body.comingFrom);
-  const whoToldYou = readString(body.whoToldYou);
+  const firstName = readField(body, "firstName", "first_name");
+  const lastName = readField(body, "lastName", "last_name");
+  const email = readField(body, "email").toLowerCase();
+  const phone = readField(body, "phone");
+  const occupation = readField(body, "occupation");
+  const comingFrom = readField(body, "comingFrom", "coming_from") || defaultComingFrom;
+  const whoToldYou = readField(body, "whoToldYou", "who_told_you");
 
-  if (!firstName || !lastName || !email || !phone || !occupation || !comingFrom) {
+  if (!firstName || !lastName || !email || !phone || !occupation) {
     res.status(400).json({
-      message:
-        "firstName, lastName, email, phone, occupation, and comingFrom are required"
+      message: "firstName, lastName, email, phone, and occupation are required"
     });
     return;
   }
@@ -177,9 +192,12 @@ registrationRouter.get("/", auth, async (req: Request, res: Response): Promise<v
       .range(from, to);
 
     if (search) {
-      query = query.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,coming_from.ilike.%${search}%`
-      );
+      const safeSearch = search.replace(/[%*,()]/g, "").trim();
+      if (safeSearch) {
+        query = query.or(
+          `first_name.ilike.%${safeSearch}%,last_name.ilike.%${safeSearch}%,email.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,coming_from.ilike.%${safeSearch}%`
+        );
+      }
     }
 
     const { data, error, count } = await query;

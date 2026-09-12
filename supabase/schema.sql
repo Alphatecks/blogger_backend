@@ -189,3 +189,5 @@ create index if not exists idx_event_registrations_created_at
 on public.event_registrations (event_slug, created_at desc);
 
 alter table public.event_registrations enable row level security;
+
+-- Direct client access is denied. The Express API writes with the service role.

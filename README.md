@@ -96,4 +96,4 @@ Set `BLOGGER_COMMENT_AUTO_APPROVE=true` to publish new comments immediately (def
 }
 ```
 
-`whoToldYou` is optional. Email is unique per event. Duplicate emails return `409`.
+`whoToldYou` is optional. `comingFrom` defaults to `Port Harcourt` if omitted. Snake_case keys (`first_name`, `last_name`, `coming_from`, `who_told_you`) are also accepted. Email is unique per event. Duplicate emails return `409`.
