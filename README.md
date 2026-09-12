@@ -25,6 +25,11 @@ Copy `.env.example` to `.env` and set:
 - `BLOGGER_POST_COVER_BUCKET` (stores uploaded local post cover images)
 - `BLOGGER_RESET_PASSWORD_REDIRECT_URL`
 - `KAIROS_EVENT_SLUG` (optional, defaults to `remnants-reborn-2026`)
+- `PUBLIC_BASE_URL` (used to build the logo URL in confirmation mail)
+- `KAIROS_SITE_URL` (optional, defaults to `https://kairosummit.org`)
+- `RESEND_API_KEY` (sends the seat list confirmation after a successful registration)
+- `RESEND_FROM` (optional, defaults to `Kairos Summit <event@kairosummit.org>`)
+- `EMAIL_LOGO_URL` (optional override for the logo in mail)
 
 ## Database Setup (Required)
 
@@ -97,3 +102,5 @@ Set `BLOGGER_COMMENT_AUTO_APPROVE=true` to publish new comments immediately (def
 ```
 
 `whoToldYou` is optional. `comingFrom` defaults to `Port Harcourt` if omitted. Snake_case keys (`first_name`, `last_name`, `coming_from`, `who_told_you`) are also accepted. Email is unique per event. Duplicate emails return `409`.
+
+A successful `POST /api/registrations` also sends a confirmation through Resend to the registrant. The seat is saved even if mail fails. The JSON includes `emailSent`. Brand files are served from `/brand/logo.png`.

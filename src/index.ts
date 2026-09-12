@@ -1,6 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import path from "path";
 
 import { getAdminClient } from "./lib/db";
 import { apiRouter } from "./routes";
@@ -11,6 +12,7 @@ const port = Number(process.env.PORT) || 4000;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(process.cwd(), "public")));
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });

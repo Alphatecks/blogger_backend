@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 
 import { getAdminClient } from "../lib/db";
+import { makeSeatCode, sendSeatListConfirmation } from "../lib/resend";
 import { auth } from "../middleware/auth";
 
 const registrationRouter = Router();
@@ -76,7 +77,8 @@ const toRegistration = (row: RegistrationRow) => ({
   occupation: row.occupation,
   comingFrom: row.coming_from,
   whoToldYou: row.who_told_you,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  code: makeSeatCode(row.first_name, row.last_name)
 });
 
 registrationRouter.get("/event", async (_req: Request, res: Response): Promise<void> => {
@@ -160,9 +162,29 @@ registrationRouter.post("/", async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const registration = toRegistration(data as RegistrationRow);
+    let emailSent = false;
+
+    try {
+      emailSent = await sendSeatListConfirmation({
+        firstName: registration.firstName,
+        lastName: registration.lastName,
+        email: registration.email,
+        phone: registration.phone,
+        occupation: registration.occupation,
+        comingFrom: registration.comingFrom,
+        seatCode: registration.code
+      });
+    } catch (mailError) {
+      const mailMessage =
+        mailError instanceof Error ? mailError.message : "Seat list mail was not sent";
+      console.error(mailMessage);
+    }
+
     res.status(201).json({
       message: "You're on the seat list",
-      data: toRegistration(data as RegistrationRow)
+      emailSent,
+      data: registration
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to submit registration";
