@@ -247,3 +247,30 @@ execute function public.set_updated_at();
 alter table public.shop_orders enable row level security;
 
 -- Direct client access is denied. The Express API writes with the service role.
+
+create table if not exists public.volunteer_applications (
+  id uuid primary key default gen_random_uuid(),
+  event_slug text not null default 'remnants-reborn-2026',
+  title text,
+  first_name text not null,
+  last_name text not null,
+  email text not null,
+  phone text not null,
+  church_organization text,
+  relevant_skills text,
+  volunteer_areas text[] not null check (cardinality(volunteer_areas) > 0),
+  availability text not null check (availability in ('full-day', 'morning-only', 'afternoon-only')),
+  volunteered_before boolean not null,
+  experience_note text,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_volunteer_applications_event_email
+on public.volunteer_applications (event_slug, lower(email));
+
+create index if not exists idx_volunteer_applications_created_at
+on public.volunteer_applications (event_slug, created_at desc);
+
+alter table public.volunteer_applications enable row level security;
+
+-- Direct client access is denied. The Express API writes with the service role.

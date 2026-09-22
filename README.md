@@ -48,6 +48,7 @@ This creates:
 - `event_registrations`
 - `post_visits`
 - `shop_orders`
+- `volunteer_applications`
 
 with indexes, triggers, and RLS policies.
 
@@ -140,3 +141,31 @@ A successful `POST /api/registrations` also sends a confirmation through Resend 
 Prices are never taken from the client. T-shirt is `N8,000`, face cap is `N4,000`. `size` is required for the t-shirt and ignored for the cap. Redirect the browser to `data.authorizationUrl`. After payment, call `GET /api/shop/verify/:reference`.
 
 Live keys (`sk_live_...`) go in `PAYSTACK_SECRET_KEY`. In the Paystack **live** dashboard, set the webhook to `https://your-api-host/api/shop/paystack/webhook`. Test and live webhooks are separate.
+
+### Volunteers
+
+- `GET /api/volunteers/options` (titles, volunteer areas, availability)
+- `POST /api/volunteers` (public application)
+- `GET /api/volunteers` (Bearer token required, paginated list)
+
+`POST /api/volunteers` body:
+
+```json
+{
+  "title": "Mr",
+  "firstName": "Ada",
+  "lastName": "Okafor",
+  "email": "ada@example.com",
+  "phone": "+2348012345678",
+  "churchOrganization": "House of Kairos",
+  "relevantSkills": "Photography, crowd management",
+  "volunteerAreas": ["ushering-protocol", "logistics"],
+  "availability": "full-day",
+  "volunteeredBefore": false,
+  "experienceNote": "I served as an usher last year and want to help again."
+}
+```
+
+Required: `firstName`, `lastName`, `email`, `phone`, `volunteerAreas` (at least one), `availability`, `volunteeredBefore`. Email is unique per event. Duplicate emails return `409`.
+
+Volunteer area slugs: `ushering-protocol`, `content-creation`, `social-media`, `logistics`, `publicity`, `graphics-design`, `admin`, `medicals`. Availability slugs: `full-day`, `morning-only`, `afternoon-only`. `volunteeredBefore` accepts `true`/`false` or `yes`/`no`.
