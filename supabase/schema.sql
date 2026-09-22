@@ -209,3 +209,41 @@ select
   count(*)::int as visits
 from public.post_visits
 group by post_id;
+
+create table if not exists public.shop_orders (
+  id uuid primary key default gen_random_uuid(),
+  reference text not null unique,
+  product_slug text not null,
+  product_name text not null,
+  colour text not null,
+  size text,
+  quantity integer not null check (quantity > 0 and quantity <= 20),
+  unit_price_kobo integer not null check (unit_price_kobo > 0),
+  amount_kobo integer not null check (amount_kobo > 0),
+  currency text not null default 'NGN',
+  full_name text not null,
+  email text not null,
+  phone text not null,
+  delivery_address text not null,
+  status text not null default 'pending' check (status in ('pending', 'paid', 'failed', 'abandoned')),
+  paystack_access_code text,
+  paystack_authorization_url text,
+  paid_at timestamptz,
+  paystack_payload jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_shop_orders_email on public.shop_orders (lower(email));
+create index if not exists idx_shop_orders_status_created_at on public.shop_orders (status, created_at desc);
+create index if not exists idx_shop_orders_reference on public.shop_orders (reference);
+
+drop trigger if exists trg_shop_orders_updated_at on public.shop_orders;
+create trigger trg_shop_orders_updated_at
+before update on public.shop_orders
+for each row
+execute function public.set_updated_at();
+
+alter table public.shop_orders enable row level security;
+
+-- Direct client access is denied. The Express API writes with the service role.

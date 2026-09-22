@@ -1,6 +1,6 @@
 import "dotenv/config";
 import cors from "cors";
-import express from "express";
+import express, { type Request } from "express";
 import path from "path";
 
 import { getAdminClient } from "./lib/db";
@@ -10,7 +10,16 @@ const app = express();
 const port = Number(process.env.PORT) || 4000;
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      const request = req as Request & { rawBody?: Buffer };
+      if (request.originalUrl.startsWith("/api/shop/paystack/webhook")) {
+        request.rawBody = buf;
+      }
+    }
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(process.cwd(), "public")));
 

@@ -30,6 +30,8 @@ Copy `.env.example` to `.env` and set:
 - `RESEND_API_KEY` (sends the seat list confirmation after a successful registration)
 - `RESEND_FROM` (optional, defaults to `Kairos Summit <event@kairosummit.org>`)
 - `EMAIL_LOGO_URL` (optional override for the logo in mail)
+- `PAYSTACK_SECRET_KEY` (required; use `sk_live_...` for live payments)
+- `PAYSTACK_CALLBACK_URL` (optional default return URL after Paystack checkout)
 
 ## Database Setup (Required)
 
@@ -45,6 +47,7 @@ This creates:
 - `post_tags`
 - `event_registrations`
 - `post_visits`
+- `shop_orders`
 
 with indexes, triggers, and RLS policies.
 
@@ -108,3 +111,32 @@ Set `BLOGGER_COMMENT_AUTO_APPROVE=true` to publish new comments immediately (def
 `whoToldYou` is optional. `comingFrom` defaults to `Port Harcourt` if omitted. Snake_case keys (`first_name`, `last_name`, `coming_from`, `who_told_you`) are also accepted. Email is unique per event. Duplicate emails return `409`.
 
 A successful `POST /api/registrations` also sends a confirmation through Resend to the registrant. The seat is saved even if mail fails. The JSON includes `emailSent`. Brand files are served from `/brand/logo.png`.
+
+### Shop (Paystack)
+
+- `GET /api/shop/products` (public catalog and server-side prices)
+- `POST /api/shop/checkout` (creates a pending order, stores customer details, starts Paystack)
+- `GET /api/shop/verify/:reference` (confirm payment after Paystack redirects back)
+- `POST /api/shop/paystack/webhook` (Paystack server-to-server confirmation)
+- `GET /api/shop/orders/:reference` (public order lookup by payment reference)
+- `GET /api/shop/orders` (Bearer token required, paginated admin list)
+
+`POST /api/shop/checkout` body:
+
+```json
+{
+  "productSlug": "official-tshirt",
+  "colour": "black",
+  "size": "L",
+  "quantity": 1,
+  "fullName": "Ada Okafor",
+  "email": "ada@example.com",
+  "phone": "+2348012345678",
+  "deliveryAddress": "12 Aba Road, Port Harcourt",
+  "callbackUrl": "https://kairosummit.org/shop/payment-complete"
+}
+```
+
+Prices are never taken from the client. T-shirt is `N8,000`, face cap is `N4,000`. `size` is required for the t-shirt and ignored for the cap. Redirect the browser to `data.authorizationUrl`. After payment, call `GET /api/shop/verify/:reference`.
+
+Live keys (`sk_live_...`) go in `PAYSTACK_SECRET_KEY`. In the Paystack **live** dashboard, set the webhook to `https://your-api-host/api/shop/paystack/webhook`. Test and live webhooks are separate.
