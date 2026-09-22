@@ -27,7 +27,7 @@ Copy `.env.example` to `.env` and set:
 - `KAIROS_EVENT_SLUG` (optional, defaults to `remnants-reborn-2026`)
 - `PUBLIC_BASE_URL` (used to build the logo URL in confirmation mail)
 - `KAIROS_SITE_URL` (optional, defaults to `https://kairosummit.org`)
-- `RESEND_API_KEY` (sends the seat list confirmation after a successful registration)
+- `RESEND_API_KEY` (sends seat list and volunteer confirmation mail)
 - `RESEND_FROM` (optional, defaults to `Kairos Summit <event@kairosummit.org>`)
 - `EMAIL_LOGO_URL` (optional override for the logo in mail)
 - `PAYSTACK_SECRET_KEY` (required; use `sk_live_...` for live payments)
@@ -167,5 +167,7 @@ Live keys (`sk_live_...`) go in `PAYSTACK_SECRET_KEY`. In the Paystack **live** 
 ```
 
 Required: `firstName`, `lastName`, `email`, `phone`, `volunteerAreas` (at least one), `availability`, `volunteeredBefore`. Email is unique per event. Duplicate emails return `409`.
+
+A successful `POST /api/volunteers` also sends a branded confirmation through Resend. The application is saved even if mail fails. The JSON includes `emailSent`.
 
 Volunteer area slugs: `ushering-protocol`, `content-creation`, `social-media`, `logistics`, `publicity`, `graphics-design`, `admin`, `medicals`. Availability slugs: `full-day`, `morning-only`, `afternoon-only`. `volunteeredBefore` accepts `true`/`false` or `yes`/`no`.

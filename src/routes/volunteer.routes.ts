@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 
 import { getAdminClient } from "../lib/db";
+import { makeVolunteerCode, sendVolunteerConfirmation } from "../lib/resend";
 import { auth } from "../middleware/auth";
 
 const volunteerRouter = Router();
@@ -170,8 +171,15 @@ const toVolunteer = (row: VolunteerRow) => ({
   availability: row.availability,
   volunteeredBefore: row.volunteered_before,
   experienceNote: row.experience_note,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  code: makeVolunteerCode(row.first_name, row.last_name)
 });
+
+const areaNames = (slugs: string[]): string[] =>
+  slugs.map((slug) => volunteerAreas.find((area) => area.slug === slug)?.name || slug);
+
+const availabilityName = (slug: string): string =>
+  availabilityOptions.find((item) => item.slug === slug)?.name || slug;
 
 volunteerRouter.get("/options", (_req: Request, res: Response): void => {
   res.status(200).json({
@@ -266,9 +274,30 @@ volunteerRouter.post("/", async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    const volunteer = toVolunteer(data as VolunteerRow);
+    let emailSent = false;
+
+    try {
+      emailSent = await sendVolunteerConfirmation({
+        firstName: volunteer.firstName,
+        lastName: volunteer.lastName,
+        email: volunteer.email,
+        phone: volunteer.phone,
+        volunteerAreas: areaNames(volunteer.volunteerAreas),
+        availability: availabilityName(volunteer.availability),
+        churchOrganization: volunteer.churchOrganization,
+        volunteerCode: volunteer.code
+      });
+    } catch (mailError) {
+      const mailMessage =
+        mailError instanceof Error ? mailError.message : "Volunteer mail was not sent";
+      console.error(mailMessage);
+    }
+
     res.status(201).json({
-      message: "Volunteer application submitted",
-      data: toVolunteer(data as VolunteerRow)
+      message: "You're on the volunteer list",
+      emailSent,
+      data: volunteer
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to submit volunteer application";

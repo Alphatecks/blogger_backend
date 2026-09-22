@@ -5,6 +5,11 @@ import {
   makeSeatCode,
   type SeatListMailInput
 } from "../emails/seatListConfirmation";
+import {
+  buildVolunteerConfirmation,
+  makeVolunteerCode,
+  type VolunteerMailInput
+} from "../emails/volunteerConfirmation";
 
 const resendApiKey = (process.env.RESEND_API_KEY || "").trim();
 const resendFrom = (process.env.RESEND_FROM || "Kairos Summit <event@kairosummit.org>").trim();
@@ -48,4 +53,35 @@ export const sendSeatListConfirmation = async (
   return true;
 };
 
-export { makeSeatCode };
+export const sendVolunteerConfirmation = async (
+  input: Omit<VolunteerMailInput, "volunteerCode" | "logoUrl" | "siteUrl"> & { volunteerCode?: string }
+): Promise<boolean> => {
+  if (!resend) {
+    console.warn("RESEND_API_KEY is missing. Volunteer mail was not sent.");
+    return false;
+  }
+
+  const volunteerCode = input.volunteerCode || makeVolunteerCode(input.firstName, input.lastName);
+  const message = buildVolunteerConfirmation({
+    ...input,
+    volunteerCode,
+    logoUrl: emailLogoUrl,
+    siteUrl
+  });
+
+  const { error } = await resend.emails.send({
+    from: resendFrom,
+    to: input.email,
+    subject: message.subject,
+    html: message.html,
+    text: message.text
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return true;
+};
+
+export { makeSeatCode, makeVolunteerCode };
